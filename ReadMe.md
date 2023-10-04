@@ -1,0 +1,1 @@
+In this repository I am just documenting my SQL progress which will function more as a codebase than a portfolio project. Feel free to copy

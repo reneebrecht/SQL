@@ -1,0 +1,244 @@
+DATA ENGINEER
+Climate Change
+To practice what you’ve learned about window functions, you are going to use climate data from each state in the United States. A labeled map of the United States can be found here.
+
+These data will show the average annual temperature for each state – this is the average temperature of every day in all parts of the state for that year.
+
+For this project, you will be working with one table:
+
+state_climate
+
+Aggregate and Value Functions
+
+Let’s start by looking at how the average temperature changes over time in each state.
+
+Write a query that returns the state, year, tempf or tempc, and running_avg_temp (in either Celsius or Fahrenheit) for each state.
+
+SELECT
+    state,
+    year,
+    tempf,
+    tempc,
+    AVG(tempc) OVER (PARTITION BY state ORDER BY year) AS running_avg_tempc,
+    AVG(tempf) OVER (PARTITION BY state ORDER BY year) AS running_avg_tempf
+FROM state_climate;
+
+
+Now let’s explore the lowest temperatures for each state.
+
+Write a query that returns state, year, tempf or tempc, and the lowest temperature (lowest_temp) for each state.
+
+Are the lowest recorded temps for each state more recent or more historic?
+
+
+WITH LowestTemps AS (
+    SELECT
+        state,
+        MIN(tempf) AS lowest_tempf,
+        MIN(tempc) AS lowest_tempc
+    FROM state_climate
+    GROUP BY state
+)
+
+SELECT
+    sc.state,
+    sc.year,
+    sc.tempf,
+    sc.tempc,
+    lt.lowest_tempf,
+    lt.lowest_tempc,
+    CASE
+        WHEN sc.tempf = lt.lowest_tempf THEN 'Recent'
+        ELSE 'Historic'
+    END AS temp_status
+FROM state_climate sc
+JOIN LowestTemps lt ON sc.state = lt.state;
+
+
+Like before, write a query that returns state, year, tempf or tempc, except now we will also return the highest temperature (highest_temp) for each state.
+
+Are the highest recorded temps for each state more recent or more historic?
+
+WITH TemperatureExtremes AS (
+    SELECT
+        state,
+        year,
+        tempf,
+        tempc,
+        MIN(tempf) OVER (PARTITION BY state) AS lowest_tempf,
+        MAX(tempf) OVER (PARTITION BY state) AS highest_tempf,
+        MIN(tempc) OVER (PARTITION BY state) AS lowest_tempc,
+        MAX(tempc) OVER (PARTITION BY state) AS highest_tempc
+    FROM state_climate
+)
+
+SELECT
+    state,
+    year,
+    tempf,
+    tempc,
+    lowest_tempf,
+    highest_tempf,
+    lowest_tempc,
+    highest_tempc,
+    CASE
+        WHEN tempf = highest_tempf THEN 'Recent'
+        ELSE 'Historic'
+    END AS highest_temp_status
+FROM TemperatureExtremes;
+
+
+Let’s see how temperature has changed each year in each state.
+
+Write a query to select the same columns but now you should write a window function that returns the change_in_temp from the previous year (no null values should be returned).
+
+Which states and years saw the largest changes in temperature?
+Is there a particular part of the United States that saw the largest yearly changes in temperature?
+WITH TemperatureChanges AS (
+    SELECT
+        state,
+        year,
+        tempf,
+        tempc,
+        LAG(tempf) OVER (PARTITION BY state ORDER BY year) AS prev_year_tempf,
+        LAG(tempc) OVER (PARTITION BY state ORDER BY year) AS prev_year_tempc
+    FROM state_climate
+)
+
+SELECT
+    state,
+    year,
+    tempf,
+    tempc,
+    CASE
+        WHEN prev_year_tempf IS NOT NULL THEN tempf - prev_year_tempf
+        ELSE NULL
+    END AS change_in_tempf,
+    CASE
+        WHEN prev_year_tempc IS NOT NULL THEN tempc - prev_year_tempc
+        ELSE NULL
+    END AS change_in_tempc
+FROM TemperatureChanges;
+
+
+Ranking Functions
+6.
+Write a query to return a rank of the coldest temperatures on record (coldest_rank) along with year, state, and tempf or tempc. Are the coldest ranked years recent or historic? The coldest years should be from any state or year.
+
+WITH ColdestTemperatures AS (
+    SELECT
+        state,
+        year,
+        tempf,
+        tempc
+    FROM state_climate
+    WHERE tempf IS NOT NULL AND tempc IS NOT NULL
+)
+
+SELECT
+    year,
+    state,
+    tempf,
+    tempc,
+    RANK() OVER (ORDER BY tempf ASC, tempc ASC) AS coldest_rank
+FROM ColdestTemperatures
+LIMIT 10;  -- Adjust the limit as needed
+
+
+Modify your coldest_rank query to now instead return the warmest_rank for each state, meaning your query should return the warmest temp/year for each state. Again, are the warmest temperatures more recent or historic for each state?
+
+WITH WarmestTemperatures AS (
+    SELECT
+        state,
+        year,
+        tempf,
+        tempc
+    FROM state_climate
+    WHERE tempf IS NOT NULL AND tempc IS NOT NULL
+)
+
+SELECT
+    state,
+    year,
+    tempf,
+    tempc,
+    RANK() OVER (PARTITION BY state ORDER BY tempf DESC, tempc DESC) AS warmest_rank
+FROM WarmestTemperatures;
+
+
+
+Let’s now write a query that will return the average yearly temperatures in quartiles instead of in rankings for each state.
+
+Your query should return quartile, year, state and tempf or tempc. The top quartile should be the coldest years.
+
+Are the coldest years more recent or historic?
+
+WITH YearlyAverageTemperatures AS (
+    SELECT
+        state,
+        year,
+        AVG(tempf) OVER (PARTITION BY state, year) AS avg_tempf,
+        AVG(tempc) OVER (PARTITION BY state, year) AS avg_tempc
+    FROM state_climate
+    WHERE tempf IS NOT NULL AND tempc IS NOT NULL
+),
+
+Quartiles AS (
+    SELECT
+        state,
+        year,
+        avg_tempf,
+        avg_tempc,
+        NTILE(4) OVER (PARTITION BY state ORDER BY avg_tempf ASC, avg_tempc ASC) AS quartile
+    FROM YearlyAverageTemperatures
+)
+
+SELECT
+    quartile,
+    year,
+    state,
+    CASE
+        WHEN quartile = 4 THEN tempf
+        ELSE tempc
+    END AS temperature
+FROM Quartiles
+WHERE quartile = 4; -- Adjust quartile value as needed
+
+
+Lastly, we will write a query that will return the average yearly temperatures in quintiles (5).
+
+Your query should return quintile, year, state and tempf or tempc. The top quintile should be the coldest years overall, not by state.
+
+What is different about the coldest quintile now?
+
+WITH YearlyAverageTemperatures AS (
+    SELECT
+        state,
+        year,
+        AVG(tempf) OVER (PARTITION BY year) AS avg_tempf,
+        AVG(tempc) OVER (PARTITION BY year) AS avg_tempc
+    FROM state_climate
+    WHERE tempf IS NOT NULL AND tempc IS NOT NULL
+),
+
+Quintiles AS (
+    SELECT
+        state,
+        year,
+        avg_tempf,
+        avg_tempc,
+        NTILE(5) OVER (ORDER BY avg_tempf ASC, avg_tempc ASC) AS quintile
+    FROM YearlyAverageTemperatures
+)
+
+SELECT
+    quintile,
+    year,
+    state,
+    CASE
+        WHEN quintile = 5 THEN tempf
+        ELSE tempc
+    END AS temperature
+FROM Quintiles
+WHERE quintile = 5; -- Adjust quintile value as needed
+
